@@ -1,0 +1,13 @@
+{
+  "name": "pi-voice",
+  "version": "0.1.0",
+  "description": "Voice input extension for pi — speak instead of type. Records mic, transcribes locally with Whisper, and sends as input.",
+  "keywords": ["pi-package", "voice", "speech-to-text", "whisper", "transcription"],
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
