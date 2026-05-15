@@ -6,6 +6,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs";
+import * as os from "node:os";
 
 const execFileAsync = promisify(execFile);
 
@@ -68,27 +69,30 @@ async function getPython(): Promise<string> {
 // ── Raw PCM → WAV conversion ──────────────────────────────────────
 
 /**
- * Convert raw PCM (16kHz, mono, signed 16-bit LE) to a valid WAV file.
- * Used for interim transcription during push-to-talk streaming.
+ * Convert raw PCM to a valid WAV file.
+ * macOS coreaudio devices record at 48 kHz regardless of requested rate,
+ * so we account for that and resample to 16 kHz mono.
  */
 export async function rawToWav(rawPath: string, wavPath: string): Promise<void> {
-  // Use sox if available, fall back to ffmpeg
+  const actualRate = os.platform() === "darwin" ? "48000" : "16000";
   try {
     await execFileAsync("sox", [
-      "-r", "16000",
+      "-r", actualRate,
       "-e", "signed",
       "-b", "16",
       "-c", "1",
       rawPath,
       wavPath,
+      "rate", "16000",
     ], { timeout: 5000, windowsHide: true });
   } catch {
-    // ffmpeg fallback
+    // ffmpeg fallback with resample
     await execFileAsync("ffmpeg", [
       "-f", "s16le",
-      "-ar", "16000",
+      "-ar", actualRate,
       "-ac", "1",
       "-i", rawPath,
+      "-ar", "16000",
       "-y", wavPath,
     ], { timeout: 5000, windowsHide: true });
   }
