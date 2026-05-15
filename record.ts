@@ -14,6 +14,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import * as os from "node:os";
+import { renameSync, unlinkSync } from "node:fs";
 
 const execFileAsync = promisify(execFile);
 
@@ -136,6 +137,7 @@ export async function detectRecorder(): Promise<Recorder> {
 }
 
 let cachedRecorder: Recorder | null = null;
+let cachedSoxAvailable: boolean | null = null;
 
 async function getRecorder(): Promise<Recorder> {
   if (!cachedRecorder) {
@@ -143,6 +145,26 @@ async function getRecorder(): Promise<Recorder> {
     console.log(`[pi-voice] Using recorder: ${cachedRecorder.name}`);
   }
   return cachedRecorder;
+}
+
+/** Strip leading and trailing silence from a WAV file using sox. */
+async function trimSilence(wavPath: string): Promise<void> {
+  if (cachedSoxAvailable === null) {
+    cachedSoxAvailable = await isCommandAvailable("sox");
+  }
+  if (!cachedSoxAvailable) return;
+
+  const tmp = wavPath + ".trimmed.wav";
+  try {
+    await execFileAsync("sox", [
+      wavPath, tmp,
+      "silence", "1", "0.1", "1%", "-1", "0.1", "1%",
+    ], { timeout: 10_000, windowsHide: true });
+
+    renameSync(tmp, wavPath);
+  } catch {
+    try { unlinkSync(tmp); } catch { /* ok */ }
+  }
 }
 
 // ── Public API ────────────────────────────────────────────────────
@@ -154,6 +176,12 @@ export async function recordAudio(
 ): Promise<string> {
   const recorder = await getRecorder();
   await recorder.record(outputPath, duration);
+
+  // Strip leading/trailing silence if sox is available
+  if (recorder.name === "sox") {
+    await trimSilence(outputPath);
+  }
+
   return recorder.name;
 }
 

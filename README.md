@@ -7,7 +7,7 @@ Speak instead of type. Your voice is transcribed locally with Whisper and sent t
 ## Features
 
 - **`/voice`** — record for a fixed duration, transcribe, confirm, and send
-- **`Cmd+Shift+V`** — push-to-talk toggle: press to start recording, press again to stop
+- **`Ctrl+Shift+V`** — push-to-talk toggle: press to start recording, press again to stop
 - Cross-platform: macOS, Linux, Windows
 - Auto-detects recording tools (sox → ffmpeg → arecord)
 - Uses mlx-whisper on macOS for speed, openai-whisper everywhere else
@@ -52,7 +52,7 @@ ln -s $(pwd) .pi/extensions/pi-voice
 ```
 /voice        Record 10 seconds, transcribe, send
 /voice 30     Record 30 seconds
-Cmd+Shift+V   Start recording (push-to-talk), press again to stop
+Ctrl+Shift+V   Start recording (push-to-talk), press again to stop
 ```
 
 ## Commands
@@ -60,13 +60,13 @@ Cmd+Shift+V   Start recording (push-to-talk), press again to stop
 | Command | Keybinding | Description |
 |---------|------------|-------------|
 | `/voice [seconds]` | — | Record, transcribe, and send voice input (default: 10s) |
-| — | `Cmd+Shift+V` | Push-to-talk toggle: start/stop recording |
+| — | `Ctrl+Shift+V` | Push-to-talk toggle: start/stop recording |
 | `/voice-model [name]` | — | View or set the Whisper model |
 
 ## How It Works
 
 ```
-/voice  or  Cmd+Shift+V
+/voice  or  Ctrl+Shift+V
   └─► Records mic audio (sox/ffmpeg/arecord)
   └─► Transcribes with Whisper (local, private)
   └─► Shows preview for confirmation
@@ -81,14 +81,7 @@ Cmd+Shift+V   Start recording (push-to-talk), press again to stop
 
 ## Configuration
 
-Edit `index.ts` to change:
-- `DEFAULT_DURATION` — default recording length (seconds)
-- `DEFAULT_WHISPER_MODEL` — Whisper model name
-- `MIN_PUSH_TO_TALK_MS` — minimum recording duration before discarding
-
-## Roadmap
-
-- [ ] Multiple language support
-- [ ] TTS output — pi reads responses aloud
-- [ ] Noise filtering / VAD
-- [ ] Configurable model persistence via `pi.appendEntry()`
+- `DEFAULT_DURATION` — default recording length in seconds (edit `index.ts`)
+- `DEFAULT_WHISPER_MODEL` — default Whisper model (edit `index.ts`)
+- `MIN_PUSH_TO_TALK_MS` — minimum recording duration before discarding (edit `index.ts`)
+- `/voice-model <name>` — change the Whisper model at runtime (persists across sessions)
