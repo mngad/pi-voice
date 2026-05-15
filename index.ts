@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
 import * as fs from "node:fs";
-import { recordAudio, startContinuousRecording, stopContinuousRecording, detectRecorder } from "./record";
+import { recordAudio, startContinuousRecording, stopContinuousRecording, detectRecorder, trimSilence } from "./record";
 import { transcribeAudio, rawToWav, findPython, isWhisperAvailable } from "./transcribe";
 
 // ── Paths & defaults ──────────────────────────────────────────────
@@ -165,6 +165,7 @@ export default function (pi: ExtensionAPI) {
         try {
           const wavPath = getTempPath("wav");
           await rawToWav(recordingRawPath!, wavPath);
+          await trimSilence(wavPath);
           const text = await transcribeAudio(wavPath, TRANSCRIBE_SCRIPT, currentModel);
           try { fs.unlinkSync(wavPath); } catch { /* ok */ }
 

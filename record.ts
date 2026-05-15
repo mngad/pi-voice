@@ -148,7 +148,7 @@ async function getRecorder(): Promise<Recorder> {
 }
 
 /** Strip leading and trailing silence from a WAV file using sox. */
-async function trimSilence(wavPath: string): Promise<void> {
+export async function trimSilence(wavPath: string): Promise<void> {
   if (cachedSoxAvailable === null) {
     cachedSoxAvailable = await isCommandAvailable("sox");
   }
