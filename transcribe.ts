@@ -10,9 +10,22 @@ import * as fs from "node:fs";
 const execFileAsync = promisify(execFile);
 
 /**
+ * Check if a working Python with Whisper is available.
+ * Returns true if at least one Python+whisper combo is found.
+ */
+export async function isWhisperAvailable(): Promise<boolean> {
+  try {
+    await findPython();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Find a working Python that can import whisper or mlx_whisper.
  */
-async function findPython(): Promise<string> {
+export async function findPython(): Promise<string> {
   const candidates = [
     "python3",
     "/Users/fraun/anaconda3/bin/python3",  // conda base

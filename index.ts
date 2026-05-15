@@ -3,7 +3,7 @@
  *
  * Usage:
  *   /voice [duration]  - Record voice for N seconds (default 10), transcribe, and send
- *   Cmd+Shift+V        - Push-to-talk toggle: start/stop recording
+ *   Ctrl+Shift+V        - Push-to-talk toggle: start/stop recording
  *
  * Requirements:
  *   - Recording: sox (recommended), ffmpeg, or arecord (auto-detected)
@@ -16,8 +16,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
 import * as fs from "node:fs";
-import { recordAudio, startContinuousRecording, stopContinuousRecording } from "./record";
-import { transcribeAudio, rawToWav } from "./transcribe";
+import { recordAudio, startContinuousRecording, stopContinuousRecording, detectRecorder } from "./record";
+import { transcribeAudio, rawToWav, findPython, isWhisperAvailable } from "./transcribe";
 
 // ── Paths & defaults ──────────────────────────────────────────────
 
@@ -30,6 +30,9 @@ const MIN_PUSH_TO_TALK_MS = 1500; // ignore recordings shorter than this
 const DEFAULT_WHISPER_MODEL = os.platform() === "darwin"
   ? "mlx-community/whisper-large-v3-turbo"
   : "base";
+
+// Mutable model — can be changed at runtime.
+let currentModel = DEFAULT_WHISPER_MODEL;
 
 // ── Push-to-talk state ────────────────────────────────────────────
 
@@ -52,6 +55,44 @@ function clearPushToTalkState() {
 // ── Extension ─────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+  // ── Startup health check ──────────────────────────────────────
+  pi.on("session_start", async (event, ctx) => {
+    // Restore persisted model setting
+    for (const entry of ctx.sessionManager.getEntries()) {
+      if (entry.type === "custom" && entry.customType === "pi-voice-model" && entry.data?.model) {
+        currentModel = entry.data.model;
+      }
+    }
+
+    // Only run health check on initial startup, not reload/resume/fork
+    if (event.reason !== "startup") return;
+
+    let issues: string[] = [];
+
+    try {
+      const recorder = await detectRecorder();
+      console.log(`[pi-voice] Recorder: ${recorder.name}`);
+    } catch (err: any) {
+      issues.push(`No recorder: ${err.message}`);
+    }
+
+    try {
+      const available = await isWhisperAvailable();
+      if (!available) {
+        issues.push("Whisper not found. Install: pip install openai-whisper");
+      }
+    } catch (err: any) {
+      issues.push(`Whisper check failed: ${err.message}`);
+    }
+
+    if (issues.length > 0) {
+      ctx.ui.notify(
+        `pi-voice: ${issues.join(" | ")}`,
+        "warning"
+      );
+    }
+  });
+
   // ── /voice command (fixed-duration) ────────────────────────────
   pi.registerCommand("voice", {
     description: "Record voice, transcribe, and send as input (optionally: /voice <seconds>)",
@@ -71,7 +112,7 @@ export default function (pi: ExtensionAPI) {
         await recordAudio(wavPath, duration);
 
         ctx.ui.setStatus("voice", "📝 Transcribing...");
-        const text = await transcribeAudio(wavPath, TRANSCRIBE_SCRIPT, DEFAULT_WHISPER_MODEL);
+        const text = await transcribeAudio(wavPath, TRANSCRIBE_SCRIPT, currentModel);
         try { fs.unlinkSync(wavPath); } catch { /* ok */ }
 
         if (!text?.trim()) {
@@ -100,7 +141,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── Push-to-talk shortcut (Ctrl+Shift+V) ───────────────────────
-  pi.registerShortcut("cmd+shift+v", {
+  pi.registerShortcut("ctrl+shift+v", {
     description: "Push-to-talk voice input (toggle start/stop)",
     handler: async (ctx) => {
       if (recordingProc) {
@@ -124,7 +165,7 @@ export default function (pi: ExtensionAPI) {
         try {
           const wavPath = getTempPath("wav");
           await rawToWav(recordingRawPath!, wavPath);
-          const text = await transcribeAudio(wavPath, TRANSCRIBE_SCRIPT, DEFAULT_WHISPER_MODEL);
+          const text = await transcribeAudio(wavPath, TRANSCRIBE_SCRIPT, currentModel);
           try { fs.unlinkSync(wavPath); } catch { /* ok */ }
 
           clearPushToTalkState();
@@ -179,10 +220,13 @@ export default function (pi: ExtensionAPI) {
     handler: async (args, ctx) => {
       const model = args.trim();
       if (!model) {
-        ctx.ui.notify(`Current Whisper model: ${DEFAULT_WHISPER_MODEL}`, "info");
+        ctx.ui.notify(`Current Whisper model: ${currentModel}`, "info");
         return;
       }
-      ctx.ui.notify(`Whisper model set to: ${model} (restart required)`, "warning");
+
+      currentModel = model;
+      pi.appendEntry("pi-voice-model", { model });
+      ctx.ui.notify(`Whisper model set to: ${model} (restart not required)`, "success");
     },
   });
 }

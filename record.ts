@@ -116,7 +116,7 @@ async function isCommandAvailable(cmd: string): Promise<boolean> {
 
 // ── Auto-detect the best recorder ─────────────────────────────────
 
-async function detectRecorder(): Promise<Recorder> {
+export async function detectRecorder(): Promise<Recorder> {
   if (await isCommandAvailable("rec")) {
     return soxRecorder;
   }

@@ -5,7 +5,8 @@
   "keywords": ["pi-package", "voice", "speech-to-text", "whisper", "transcription"],
   "license": "MIT",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": ["./index.ts"],
+    "image": "https://raw.githubusercontent.com/mngad/pi-voice/main/demo.gif"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
