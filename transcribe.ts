@@ -29,11 +29,16 @@ export async function isWhisperAvailable(): Promise<boolean> {
 export async function findPython(): Promise<string> {
   const candidates = [
     "python3",
-    "/Users/fraun/anaconda3/bin/python3",  // conda base
-    "/opt/homebrew/bin/python3",           // homebrew
-    "/usr/bin/python3",                     // system
     "python",
   ];
+
+  // On non-Windows, also check common Unix paths
+  if (os.platform() !== "win32") {
+    candidates.push(
+      "/opt/homebrew/bin/python3",
+      "/usr/bin/python3",
+    );
+  }
 
   for (const cmd of candidates) {
     try {
@@ -75,27 +80,30 @@ async function getPython(): Promise<string> {
  */
 export async function rawToWav(rawPath: string, wavPath: string): Promise<void> {
   const actualRate = os.platform() === "darwin" ? "48000" : "16000";
-  try {
-    await execFileAsync("sox", [
-      "-r", actualRate,
-      "-e", "signed",
-      "-b", "16",
-      "-c", "1",
-      rawPath,
-      wavPath,
-      "rate", "16000",
-    ], { timeout: 5000, windowsHide: true });
-  } catch {
-    // ffmpeg fallback with resample
-    await execFileAsync("ffmpeg", [
-      "-f", "s16le",
-      "-ar", actualRate,
-      "-ac", "1",
-      "-i", rawPath,
-      "-ar", "16000",
-      "-y", wavPath,
-    ], { timeout: 5000, windowsHide: true });
+  const soxCmd = os.platform() === "win32" ? "sox" : "sox";
+
+  // Try sox first, then ffmpeg
+  const tools = [
+    {
+      cmd: soxCmd,
+      args: ["-r", actualRate, "-e", "signed", "-b", "16", "-c", "1", rawPath, wavPath, "rate", "16000"],
+    },
+    {
+      cmd: "ffmpeg",
+      args: ["-f", "s16le", "-ar", actualRate, "-ac", "1", "-i", rawPath, "-ar", "16000", "-y", wavPath],
+    },
+  ];
+
+  for (const tool of tools) {
+    try {
+      await execFileAsync(tool.cmd, tool.args, { timeout: 5000, windowsHide: true });
+      return;
+    } catch {
+      continue;
+    }
   }
+
+  throw new Error(`Failed to convert raw PCM to WAV. Tried sox and ffmpeg.`);
 }
 
 // ── Public API ────────────────────────────────────────────────────

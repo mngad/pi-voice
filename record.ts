@@ -28,61 +28,131 @@ interface Recorder {
 
 // ── Recorder implementations ──────────────────────────────────────
 
-const soxRecorder: Recorder = {
-  name: "sox",
-  cmd: "rec",
-  async record(outputPath, duration) {
-    await execFileAsync("rec", [
-      "-c", "1",
-      "-b", "16",
-      outputPath,
-      "trim", "0", String(duration),
-      "rate", "16000",    // resample — macOS coreaudio ignores input -r flag
-    ], { timeout: (duration + 10) * 1000, windowsHide: true });
-  },
-  continuousArgs(outputPath) {
-    return [
-      "-c", "1",
-      "-b", "16",
-      "-e", "signed",
-      "-t", "raw",   // raw PCM — no header, easy to snapshot
-      outputPath,
-    ];
-  },
-};
+// SoX uses "rec" on Unix (symlink that makes sox act as recorder).
+// On Windows, sox is a single binary — use "sox -d" for default device.
+function createSoxRecorder(soxCmd: "rec" | "sox"): Recorder {
+  const recordArgs = soxCmd === "rec"
+    ? (outputPath: string, duration: number) => [
+        "-c", "1", "-b", "16", outputPath,
+        "trim", "0", String(duration), "rate", "16000",
+      ]
+    : (outputPath: string, duration: number) => [
+        "-d", "-c", "1", "-b", "16", outputPath,
+        "trim", "0", String(duration), "rate", "16000",
+      ];
 
-const ffmpegRecorder: Recorder = {
-  name: "ffmpeg",
-  cmd: "ffmpeg",
-  async record(outputPath, duration) {
-    const platform = os.platform();
-    const inputFormat = platform === "darwin" ? "avfoundation"
-      : platform === "win32" ? "dshow" : "alsa";
-    const inputDevice = platform === "darwin" ? ":0"
-      : platform === "win32" ? 'audio="Microphone"' : "default";
+  const continuousArgsFn = soxCmd === "rec"
+    ? (outputPath: string) => [
+        "-c", "1", "-b", "16", "-e", "signed", "-t", "raw", outputPath,
+      ]
+    : (outputPath: string) => [
+        "-d", "-c", "1", "-b", "16", "-e", "signed", "-t", "raw", outputPath,
+      ];
 
-    await execFileAsync("ffmpeg", [
-      "-f", inputFormat, "-i", inputDevice,
-      "-t", String(duration),
-      "-ar", "16000", "-ac", "1", "-sample_fmt", "s16",
-      "-y", outputPath,
-    ], { timeout: (duration + 10) * 1000, windowsHide: true });
-  },
-  continuousArgs(outputPath) {
-    const platform = os.platform();
-    const inputFormat = platform === "darwin" ? "avfoundation"
-      : platform === "win32" ? "dshow" : "alsa";
-    const inputDevice = platform === "darwin" ? ":0"
-      : platform === "win32" ? 'audio="Microphone"' : "default";
+  return {
+    name: "sox",
+    cmd: soxCmd,
+    async record(outputPath, duration) {
+      await execFileAsync(soxCmd, recordArgs(outputPath, duration), {
+        timeout: (duration + 10) * 1000, windowsHide: true,
+      });
+    },
+    continuousArgs: continuousArgsFn,
+  };
+}
 
-    return [
-      "-f", inputFormat, "-i", inputDevice,
-      "-f", "s16le",           // raw PCM output
-      "-ar", "16000", "-ac", "1",
-      "-y", outputPath,
-    ];
-  },
-};
+// ── Windows dshow device detection ────────────────────────────
+// ffmpeg on Windows uses dshow; device names vary (e.g.
+// "Microphone (USB Microphone)", "Microphone Array (Realtek)").
+// We auto-detect the first available audio device.
+
+let cachedWinDevice: string | null = null;
+
+async function detectWindowsAudioDevice(): Promise<string> {
+  if (cachedWinDevice) return cachedWinDevice;
+
+  try {
+    // Run ffmpeg -list_devices against a dummy input; stderr lists devices.
+    // Note: execFile resolves successfully even though "dummy" isn't a valid input file.
+    const { stderr } = await execFileAsync("ffmpeg", [
+      "-list_devices", "true", "-f", "dshow", "-i", "dummy",
+    ], { timeout: 5000, windowsHide: true });
+
+    // Parse lines like: "Microphone (USB Microphone)" (audio)
+    const match = stderr.match(/"([^"]+)"\s+\(audio\)/);
+    if (match) {
+      cachedWinDevice = `audio="${match[1]}"`;
+      console.log(`[pi-voice] Detected Windows mic: ${cachedWinDevice}`);
+      return cachedWinDevice;
+    }
+    console.log("[pi-voice] Could not parse dshow devices from stderr, will try fallbacks");
+  } catch (err: any) {
+    // If execFile itself fails (e.g., ffmpeg not found), check the error stderr too
+    const stderr = err?.stderr || "";
+    const match = stderr.match(/"([^"]+)"\s+\(audio\)/);
+    if (match) {
+      cachedWinDevice = `audio="${match[1]}"`;
+      console.log(`[pi-voice] Detected Windows mic: ${cachedWinDevice}`);
+      return cachedWinDevice;
+    }
+    console.log("[pi-voice] Could not list dshow devices, will try fallbacks");
+  }
+
+  // Fallback: try common patterns in order
+  const fallbacks = [
+    'audio="Microphone"',
+    'audio="Microphone (USB',       // ffmpeg does prefix matching
+    'audio="Microphone Array"',
+  ];
+
+  for (const device of fallbacks) {
+    try {
+      await execFileAsync("ffmpeg", [
+        "-f", "dshow", "-i", device, "-t", "0.1", "-f", "null", "-",
+      ], { timeout: 3000, windowsHide: true });
+      cachedWinDevice = device;
+      console.log(`[pi-voice] Using Windows mic device: ${device}`);
+      return cachedWinDevice;
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(
+    "Could not find a working microphone on Windows.\n" +
+    "Run 'ffmpeg -list_devices true -f dshow -i dummy' to see available devices.\n" +
+    "Set PI_VOICE_MIC_DEVICE env var to the full device name (e.g. 'audio=\\"My Mic\\"')."
+  );
+}
+
+function createFfmpegRecorder(inputDevice: string): Recorder {
+  const platform = os.platform();
+  const inputFormat = platform === "darwin" ? "avfoundation"
+    : platform === "win32" ? "dshow" : "alsa";
+  const deviceArg = platform === "darwin" ? ":0"
+    : platform === "win32" ? inputDevice : "default";
+
+  return {
+    name: "ffmpeg",
+    cmd: "ffmpeg",
+    async record(outputPath, duration) {
+      await execFileAsync("ffmpeg", [
+        "-f", inputFormat, "-i", deviceArg,
+        "-t", String(duration),
+        "-ar", "16000", "-ac", "1", "-sample_fmt", "s16",
+        "-y", outputPath,
+      ], { timeout: (duration + 10) * 1000, windowsHide: true });
+    },
+    continuousArgs(outputPath) {
+      return [
+        "-f", inputFormat, "-i", deviceArg,
+        "-f", "s16le",           // raw PCM output
+        "-ar", "16000", "-ac", "1",
+        "-y", outputPath,
+      ];
+    },
+  };
+}
 
 const arecordRecorder: Recorder = {
   name: "arecord",
@@ -116,11 +186,27 @@ async function isCommandAvailable(cmd: string): Promise<boolean> {
 // ── Auto-detect the best recorder ─────────────────────────────────
 
 export async function detectRecorder(): Promise<Recorder> {
-  if (await isCommandAvailable("rec")) {
-    return soxRecorder;
+  // Prefer sox (rec on Unix, sox on Windows)
+  if (os.platform() === "win32") {
+    if (await isCommandAvailable("sox")) {
+      return createSoxRecorder("sox");
+    }
+  } else {
+    if (await isCommandAvailable("rec")) {
+      return createSoxRecorder("rec");
+    }
   }
   if (await isCommandAvailable("ffmpeg")) {
-    return ffmpegRecorder;
+    // On Windows, auto-detect the dshow audio device
+    if (os.platform() === "win32") {
+      try {
+        const device = await detectWindowsAudioDevice();
+        return createFfmpegRecorder(device);
+      } catch (err: any) {
+        throw new Error(`ffmpeg found but no mic detected: ${err.message}`);
+      }
+    }
+    return createFfmpegRecorder('audio="Microphone"');
   }
   if (os.platform() === "linux" && (await isCommandAvailable("arecord"))) {
     return arecordRecorder;
@@ -172,11 +258,28 @@ export async function startContinuousRecording(
 /** Stop a continuous recording process. */
 export function stopContinuousRecording(proc: ChildProcess): Promise<void> {
   return new Promise((resolve) => {
+    const pid = proc.pid;
+    if (!pid) {
+      resolve();
+      return;
+    }
     proc.on("exit", () => resolve());
-    proc.kill("SIGTERM");
-    // Force kill after 2s if still alive
-    setTimeout(() => {
-      if (proc.exitCode === null) proc.kill("SIGKILL");
-    }, 2000);
+
+    if (os.platform() === "win32") {
+      // Windows: use taskkill for reliable ffmpeg termination
+      execFile("taskkill", ["/pid", String(pid), "/f", "/t"], { windowsHide: true })
+        .on("error", () => {
+          // Fallback to Node's built-in kill
+          try { proc.kill(); } catch { /* already dead */ }
+        });
+    } else {
+      proc.kill("SIGTERM");
+      // Force kill after 2s if still alive
+      setTimeout(() => {
+        if (proc.exitCode === null) {
+          try { proc.kill("SIGKILL"); } catch { /* ok */ }
+        }
+      }, 2000);
+    }
   });
 }
