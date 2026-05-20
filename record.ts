@@ -121,7 +121,7 @@ async function detectWindowsAudioDevice(): Promise<string> {
   throw new Error(
     "Could not find a working microphone on Windows.\n" +
     "Run 'ffmpeg -list_devices true -f dshow -i dummy' to see available devices.\n" +
-    "Set PI_VOICE_MIC_DEVICE env var to the full device name (e.g. 'audio=\\"My Mic\\"')."
+    "Set PI_VOICE_MIC_DEVICE env var to the full device name (e.g. 'audio=My Mic')."
   );
 }
 
