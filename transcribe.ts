@@ -27,33 +27,50 @@ export async function isWhisperAvailable(): Promise<boolean> {
  * Find a working Python that can import whisper or mlx_whisper.
  */
 export async function findPython(): Promise<string> {
-  const candidates = [
-    "python3",
-    "python",
-  ];
+  const isWindows = os.platform() === "win32";
+  const isMac = os.platform() === "darwin";
 
-  // On non-Windows, also check common Unix paths
-  if (os.platform() !== "win32") {
-    candidates.push(
-      "/opt/homebrew/bin/python3",
-      "/usr/bin/python3",
-    );
-  }
+  const candidates = isWindows
+    ? ["python.exe", "python3.exe", "python", "py.exe", "py"]
+    : isMac
+    ? [
+        "/opt/homebrew/bin/python3",
+        "/usr/local/bin/python3",
+        "/usr/bin/python3",
+        "python3",
+        "python",
+      ]
+    : ["python3", "python"];
+
+  const failed: string[] = [];
 
   for (const cmd of candidates) {
+    // whisper (openai-whisper, cross-platform)
     try {
-      await execFileAsync(cmd, ["-c", "import whisper"], { timeout: 5000, windowsHide: true });
+      await execFileAsync(cmd, ["-c", "import whisper"], {
+        timeout: 10_000,
+        windowsHide: true,
+      });
+      console.log(`[pi-voice] Found Python + whisper: ${cmd}`);
       return cmd;
-    } catch {
-      try {
-        await execFileAsync(cmd, ["-c", "import mlx_whisper"], { timeout: 5000, windowsHide: true });
-        return cmd;
-      } catch {
-        continue;
-      }
+    } catch (e: any) {
+      failed.push(`${cmd}(whisper): ${e?.message || e}`);
+    }
+
+    // mlx-whisper (macOS-only, Apple Silicon)
+    try {
+      await execFileAsync(cmd, ["-c", "import mlx_whisper"], {
+        timeout: 10_000,
+        windowsHide: true,
+      });
+      console.log(`[pi-voice] Found Python + mlx_whisper: ${cmd}`);
+      return cmd;
+    } catch (e: any) {
+      failed.push(`${cmd}(mlx_whisper): ${e?.message || e}`);
     }
   }
 
+  console.error(`[pi-voice] Python detection failures:\n  ${failed.join("\n  ")}`);
   throw new Error(
     "No Python with Whisper found. Install:\n" +
     "  pip install openai-whisper\n" +

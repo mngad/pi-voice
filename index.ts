@@ -3,7 +3,7 @@
  *
  * Usage:
  *   /voice [duration]  - Record voice for N seconds (default 10), transcribe, and send
- *   Ctrl+Shift+V        - Push-to-talk toggle: start/stop recording
+ *   Alt+R               - Push-to-talk toggle: start/stop recording
  *
  * Requirements:
  *   - Recording: sox (recommended), ffmpeg, or arecord (auto-detected)
@@ -140,8 +140,8 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ── Push-to-talk shortcut (Ctrl+Shift+V) ───────────────────────
-  pi.registerShortcut("ctrl+shift+v", {
+  // ── Push-to-talk shortcut (Alt+R) ───────────────────────
+  pi.registerShortcut("alt+r", {
     description: "Push-to-talk voice input (toggle start/stop)",
     handler: async (ctx) => {
       if (recordingProc) {
@@ -201,7 +201,7 @@ export default function (pi: ExtensionAPI) {
           return;
         }
 
-        ctx.ui.setStatus("voice", "🎤 Recording... (Ctrl+Shift+V to stop)");
+        ctx.ui.setStatus("voice", "🎤 Recording... (Alt+R to stop)");
       }
     },
   });

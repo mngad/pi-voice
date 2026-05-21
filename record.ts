@@ -81,7 +81,7 @@ async function detectWindowsAudioDevice(): Promise<string> {
     // Parse lines like: "Microphone (USB Microphone)" (audio)
     const match = stderr.match(/"([^"]+)"\s+\(audio\)/);
     if (match) {
-      cachedWinDevice = `audio="${match[1]}"`;
+      cachedWinDevice = `audio=${match[1]}`;
       console.log(`[pi-voice] Detected Windows mic: ${cachedWinDevice}`);
       return cachedWinDevice;
     }
@@ -91,7 +91,7 @@ async function detectWindowsAudioDevice(): Promise<string> {
     const stderr = err?.stderr || "";
     const match = stderr.match(/"([^"]+)"\s+\(audio\)/);
     if (match) {
-      cachedWinDevice = `audio="${match[1]}"`;
+      cachedWinDevice = `audio=${match[1]}`;
       console.log(`[pi-voice] Detected Windows mic: ${cachedWinDevice}`);
       return cachedWinDevice;
     }
@@ -100,9 +100,9 @@ async function detectWindowsAudioDevice(): Promise<string> {
 
   // Fallback: try common patterns in order
   const fallbacks = [
-    'audio="Microphone"',
-    'audio="Microphone (USB',       // ffmpeg does prefix matching
-    'audio="Microphone Array"',
+    'audio=Microphone',
+    'audio=Microphone (USB',       // ffmpeg does prefix matching
+    'audio=Microphone Array',
   ];
 
   for (const device of fallbacks) {
@@ -183,14 +183,30 @@ async function isCommandAvailable(cmd: string): Promise<boolean> {
   }
 }
 
+/** Test if sox can actually access a default audio device (Windows often fails). */
+async function canSoxRecord(): Promise<boolean> {
+  if (os.platform() !== "win32") return true; // rec/sox on Unix usually works
+  try {
+    // Quick 0.1s test recording to null
+    await execFileAsync("sox", ["-d", "-c", "1", "-b", "16", "-n", "trim", "0", "0.1"], {
+      timeout: 5000,
+      windowsHide: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Auto-detect the best recorder ─────────────────────────────────
 
 export async function detectRecorder(): Promise<Recorder> {
-  // Prefer sox (rec on Unix, sox on Windows)
+  // Prefer sox (rec on Unix, sox on Windows — but only if it can access audio)
   if (os.platform() === "win32") {
-    if (await isCommandAvailable("sox")) {
+    if (await isCommandAvailable("sox") && (await canSoxRecord())) {
       return createSoxRecorder("sox");
     }
+    console.log("[pi-voice] Sox unavailable for recording, trying ffmpeg...");
   } else {
     if (await isCommandAvailable("rec")) {
       return createSoxRecorder("rec");
