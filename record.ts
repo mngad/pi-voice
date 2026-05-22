@@ -267,7 +267,7 @@ export async function startContinuousRecording(
 ): Promise<ChildProcess> {
   const recorder = await getRecorder();
   const args = recorder.continuousArgs(outputPath);
-  const proc = spawn(recorder.cmd, args, { stdio: "ignore" });
+  const proc = spawn(recorder.cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
   return proc;
 }
 
@@ -282,12 +282,20 @@ export function stopContinuousRecording(proc: ChildProcess): Promise<void> {
     proc.on("exit", () => resolve());
 
     if (os.platform() === "win32") {
-      // Windows: use taskkill for reliable ffmpeg termination
-      execFile("taskkill", ["/pid", String(pid), "/f", "/t"], { windowsHide: true })
-        .on("error", () => {
-          // Fallback to Node's built-in kill
-          try { proc.kill(); } catch { /* already dead */ }
-        });
+      // Windows: ask ffmpeg to stop gracefully via stdin 'q',
+      // then force-kill after timeout (prevents truncated buffered audio)
+      if (proc.stdin && !proc.stdin.destroyed) {
+        proc.stdin.write("q\n");
+        proc.stdin.end();
+      }
+      setTimeout(() => {
+        if (proc.exitCode === null) {
+          execFile("taskkill", ["/pid", String(pid), "/f", "/t"], { windowsHide: true })
+            .on("error", () => {
+              try { proc.kill(); } catch { /* already dead */ }
+            });
+        }
+      }, 3000);
     } else {
       proc.kill("SIGTERM");
       // Force kill after 2s if still alive
