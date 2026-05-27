@@ -7,7 +7,7 @@ Speak instead of type. Your voice is transcribed locally with Whisper and sent t
 ## Features
 
 - **`/voice`** — record for a fixed duration, transcribe, confirm, and send
-- **`Ctrl+Shift+V`** — push-to-talk toggle: press to start recording, press again to stop
+- **`F5`** — push-to-talk toggle: press to start recording, press again to stop
 - Cross-platform: macOS, Linux, Windows
 - Auto-detects recording tools (sox → ffmpeg → arecord)
 - Uses mlx-whisper on macOS for speed, openai-whisper everywhere else
@@ -52,7 +52,7 @@ ln -s $(pwd) .pi/extensions/pi-voice
 ```
 /voice        Record 10 seconds, transcribe, send
 /voice 30     Record 30 seconds
-Ctrl+Shift+V   Start recording (push-to-talk), press again to stop
+F5             Start recording (push-to-talk), press again to stop
 ```
 
 ## Commands
@@ -60,13 +60,13 @@ Ctrl+Shift+V   Start recording (push-to-talk), press again to stop
 | Command | Keybinding | Description |
 |---------|------------|-------------|
 | `/voice [seconds]` | — | Record, transcribe, and send voice input (default: 10s) |
-| — | `Ctrl+Shift+V` | Push-to-talk toggle: start/stop recording |
+| — | `F5` | Push-to-talk toggle: start/stop recording |
 | `/voice-model [name]` | — | View or set the Whisper model |
 
 ## How It Works
 
 ```
-/voice  or  Ctrl+Shift+V
+/voice  or  F5
   └─► Records mic audio (sox/ffmpeg/arecord)
   └─► Transcribes with Whisper (local, private)
   └─► Shows preview for confirmation
