@@ -8,6 +8,11 @@
     "extensions": ["./index.ts"],
     "image": "https://raw.githubusercontent.com/mngad/pi-voice/main/demo.gif"
   },
+  "piWeb": {
+    "plugins": [
+      { "id": "pi-voice", "module": "pi-web-plugin.js" }
+    ]
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
   }

@@ -85,3 +85,35 @@ F5             Start recording (push-to-talk), press again to stop
 - `DEFAULT_WHISPER_MODEL` — default Whisper model (edit `index.ts`)
 - `MIN_PUSH_TO_TALK_MS` — minimum recording duration before discarding (edit `index.ts`)
 - `/voice-model <name>` — change the Whisper model at runtime (persists across sessions)
+
+## pi-web browser plugin
+
+This package also ships a **pi-web** browser plugin (`piWeb.plugins` in `package.json`,
+module `pi-web-plugin.js`). It adds voice input to the pi-web UI so you can speak
+when accessing pi through a browser — including remotely. Audio is captured by
+**your browser's** microphone and transcribed locally with Whisper on the pi-web
+server, so it works even when the server's mic isn't yours.
+
+The plugin is inert in terminal/TUI mode — the Pi coding agent only reads
+`pi.extensions` and ignores `piWeb`, which is consumed solely by pi-web.
+
+### What it adds to pi-web
+
+- A **Voice** workspace panel: mic button, live timer, **mic picker** (choose
+  which input device to use — handy in Chrome, which otherwise picks silently),
+  active-mic label, Whisper model field, and Python interpreter field.
+- A **Voice input (push to talk)** action with the `mod+shift+v` shortcut.
+
+### Requirements (on the pi-web server)
+
+- `python3` with `openai-whisper` (or `mlx-whisper` on macOS)
+- `ffmpeg` (used to pre-convert browser audio to 16 kHz mono WAV for Whisper)
+- pi-web served over **HTTPS or localhost** (browsers block mic capture on plain
+  HTTP non-localhost hosts)
+
+### Use
+
+Open a workspace in pi-web, pick the **Voice** panel, choose your mic, click
+**Record** (or press `mod+shift+v`), speak, click **Stop**. The transcript is
+inserted into the prompt for you to review and send. Recordings are kept under
+`.pi-voice/tmp/` in the workspace for diagnostics.
